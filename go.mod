@@ -1,4 +1,4 @@
-module is_seville_sunny_today
+module github.com/carlos-gn/is_sunny_in_seville
 
 go 1.25.5
 

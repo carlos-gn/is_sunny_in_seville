@@ -27,8 +27,11 @@ vendor/
 .vendor/
 
 # Project binary
+is_sunny_in_seville
 is_seville_sunny_today
 is_seville_sunny_today.exe
+seville-weather
+
 
 # Temporary files
 *.tmp
