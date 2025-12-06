@@ -7,6 +7,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -103,7 +105,37 @@ func isSunnyInSeville(ctx context.Context) (string, error) {
 	return fmt.Sprintf("No, it's not sunny in Seville. Weather: %s (%.1f°C)", weather.Description, data.Main.Temp), nil
 }
 
+// HTTP handlers
+func healthHandler(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{
+		"status":  "healthy",
+		"service": "seville-weather",
+	})
+}
+
+func isSunnyHandler(w http.ResponseWriter, r *http.Request) {
+	result, err := isSunnyInSeville(r.Context())
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": result,
+	})
+}
+
 func main() {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
 	// Create a new MCP server
 	s := mcp.NewServer(
 		&mcp.Implementation{
@@ -127,8 +159,40 @@ func main() {
 		return nil, Output{Message: result}, nil
 	})
 
-	// Run the server over stdin/stdout
-	if err := s.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
-		log.Fatalf("Server error: %v", err)
+	// Run MCP stdio server in background (for desktop clients)
+	go func() {
+		if err := s.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
+			log.Printf("MCP stdio server error: %v", err)
+		}
+	}()
+
+	// Setup HTTP server for K8s
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", healthHandler)
+	mux.HandleFunc("/api/is-sunny", isSunnyHandler)
+
+	httpServer := &http.Server{
+		Addr:         ":" + port,
+		Handler:      mux,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
 	}
+
+	// Start HTTP server in background
+	go func() {
+		log.Printf("HTTP server listening on :%s", port)
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("HTTP server error: %v", err)
+		}
+	}()
+
+	// Wait for interrupt signal
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	<-sigCh
+
+	log.Println("Shutting down...")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	httpServer.Shutdown(ctx)
 }

@@ -1,0 +1,15 @@
+# Binaries
+is_seville_sunny_today
+is_sunny_in_seville
+
+# Git
+.git
+.gitignore
+
+# Documentation
+README.md
+*.md
+
+# IDE
+.vscode
+.idea

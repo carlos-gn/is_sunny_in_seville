@@ -1,0 +1,49 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: openweather-secret
+type: Opaque
+stringData:
+  OPENWEATHER_API_KEY: "<OPENWEATHER_API_KEY>"
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: seville-weather-test
+  labels:
+    app: seville-weather
+spec:
+  containers:
+    - name: seville-weather
+      image: seville-weather:latest
+      imagePullPolicy: Never # Important! Tells K8s to use local image
+      ports:
+        - containerPort: 8080
+          name: http
+      env:
+        - name: OPENWEATHER_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: openweather-secret
+              key: OPENWEATHER_API_KEY
+        - name: PORT
+          value: "8080"
+      livenessProbe:
+        httpGet:
+          path: /health
+          port: 8080
+        initialDelaySeconds: 5
+        periodSeconds: 10
+      readinessProbe:
+        httpGet:
+          path: /health
+          port: 8080
+        initialDelaySeconds: 5
+        periodSeconds: 5
+      resources:
+        requests:
+          memory: "64Mi"
+          cpu: "100m"
+        limits:
+          memory: "128Mi"
+          cpu: "200m"
